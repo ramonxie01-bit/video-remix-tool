@@ -9,6 +9,104 @@ from app.pipeline.export import export_job
 from app.pipeline.styles import get_style, style_options
 from app.services.update_check import LOCAL_VERSION, check_update
 
+# Written beside a frozen exe after the window is built. The Windows smoke
+# treats a missing file as a startup crash: Flet shows session errors in the
+# client and does not always reach remix_crash.log.
+STARTUP_OK_NAME = "remix_startup_ok.txt"
+
+
+def make_import_pickers() -> tuple[ft.FilePicker, ft.FilePicker, ft.FilePicker]:
+    """Folder, script, and BGM pickers.
+
+    Flet 0.86 FilePicker is a service. The constructor does not take
+    on_result, and pick_files / get_directory_path are async and return
+    the selection. Instances register themselves on the current page.
+    Do not place them on the page overlay (that control is unknown in 0.86).
+    """
+    return ft.FilePicker(), ft.FilePicker(), ft.FilePicker()
+
+
+def script_pick_kwargs() -> dict:
+    # allowed_extensions is applied only when file_type is CUSTOM.
+    return {
+        "allow_multiple": False,
+        "file_type": ft.FilePickerFileType.CUSTOM,
+        "allowed_extensions": ["txt", "srt"],
+        "dialog_title": "选择口播文案 (.txt / .srt)",
+    }
+
+
+def bgm_pick_kwargs() -> dict:
+    return {
+        "allow_multiple": False,
+        "file_type": ft.FilePickerFileType.CUSTOM,
+        "allowed_extensions": ["mp3", "wav", "m4a"],
+        "dialog_title": "选择配乐文件",
+    }
+
+
+def apply_folder_pick(picked: list[str], path: str | None) -> str | None:
+    """Store a chosen footage folder. None or blank means the dialog was cancelled."""
+    if not path:
+        return None
+    picked.clear()
+    picked.append(path)
+    return path
+
+
+def apply_script_pick(file_path: str | None) -> tuple[str | None, Path | None, str]:
+    """A script file was chosen. Return (text, path, status). text is None on failure."""
+    if not file_path:
+        return None, None, "无法读取文案文件"
+    path = Path(file_path)
+    if not path.is_file():
+        return None, None, "无法读取文案文件"
+    try:
+        raw = path.read_text(encoding="utf-8-sig")
+    except OSError as ex:
+        return None, None, f"读文案失败：{ex}"
+    return raw, path, f"已导入文案：{path.name}"
+
+
+def apply_bgm_pick(file_path: str | None) -> tuple[str | None, str]:
+    """A BGM file was chosen. Return (path, status). path is None when unusable."""
+    if not file_path:
+        return None, "无法读取配乐文件"
+    return file_path, f"已选配乐：{Path(file_path).name}"
+
+
+async def take_directory(picker: ft.FilePicker) -> str | None:
+    path = await picker.get_directory_path()
+    return path or None
+
+
+async def take_script_import(
+    picker: ft.FilePicker,
+) -> tuple[str | None, Path | None, str] | None:
+    """None when the dialog is cancelled."""
+    files = await picker.pick_files(**script_pick_kwargs())
+    if not files:
+        return None
+    return apply_script_pick(files[0].path)
+
+
+async def take_bgm_import(picker: ft.FilePicker) -> tuple[str | None, str] | None:
+    """None when the dialog is cancelled."""
+    files = await picker.pick_files(**bgm_pick_kwargs())
+    if not files:
+        return None
+    return apply_bgm_pick(files[0].path)
+
+
+def mark_startup_ok() -> None:
+    """Record that FilePickers were constructed and the window was built."""
+    import sys
+
+    if not getattr(sys, "frozen", False):
+        return
+    dest = Path(sys.executable).resolve().parent / STARTUP_OK_NAME
+    dest.write_text(f"ok v{LOCAL_VERSION}\n", encoding="utf-8")
+
 
 def run_app() -> None:
     import os
@@ -82,50 +180,39 @@ def main(page: ft.Page) -> None:
     script_path_held: list[Path | None] = [None]
     picked_label = ft.Text("未选择素材")
 
-    def on_folder(e: ft.FilePickerResultEvent) -> None:
-        if e.path:
-            picked.clear()
-            picked.append(e.path)
-            picked_label.value = e.path
-            page.update()
+    folder_picker, script_picker, bgm_picker = make_import_pickers()
 
-    def on_script_file(e: ft.FilePickerResultEvent) -> None:
-        if not e.files:
+    async def pick_folder(_e: ft.ControlEvent) -> None:
+        shown = apply_folder_pick(picked, await take_directory(folder_picker))
+        if shown is None:
             return
-        f = e.files[0]
-        path = Path(f.path) if f.path else None
-        if path is None or not path.is_file():
-            status.value = "无法读取文案文件"
-            page.update()
-            return
-        try:
-            raw = path.read_text(encoding="utf-8-sig")
-        except OSError as ex:
-            status.value = f"读文案失败：{ex}"
-            page.update()
-            return
-        script_field.value = raw
-        script_path_held[0] = path
-        status.value = f"已导入文案：{path.name}"
+        picked_label.value = shown
         page.update()
 
-    def on_bgm_file(e: ft.FilePickerResultEvent) -> None:
-        if not e.files:
+    async def pick_script(_e: ft.ControlEvent) -> None:
+        result = await take_script_import(script_picker)
+        if result is None:
             return
-        f = e.files[0]
-        path = f.path
-        if not path:
-            status.value = "无法读取配乐文件"
-            page.update()
-            return
-        bgm_field.value = path
-        status.value = f"已选配乐：{Path(path).name}"
+        text, path, message = result
+        if text is None:
+            status.value = message
+        else:
+            script_field.value = text
+            script_path_held[0] = path
+            status.value = message
         page.update()
 
-    folder_picker = ft.FilePicker(on_result=on_folder)
-    script_picker = ft.FilePicker(on_result=on_script_file)
-    bgm_picker = ft.FilePicker(on_result=on_bgm_file)
-    page.overlay.extend([folder_picker, script_picker, bgm_picker])
+    async def pick_bgm(_e: ft.ControlEvent) -> None:
+        result = await take_bgm_import(bgm_picker)
+        if result is None:
+            return
+        path, message = result
+        if path is None:
+            status.value = message
+        else:
+            bgm_field.value = path
+            status.value = message
+        page.update()
 
     def do_export(_e: ft.ControlEvent) -> None:
         if not picked:
@@ -191,7 +278,7 @@ def main(page: ft.Page) -> None:
             [
                 ft.ElevatedButton(
                     "选择素材文件夹",
-                    on_click=lambda _: folder_picker.get_directory_path(),
+                    on_click=pick_folder,
                 ),
                 picked_label,
             ]
@@ -209,11 +296,7 @@ def main(page: ft.Page) -> None:
         ft.ElevatedButton(
             "导入文案",
             icon=ft.Icons.UPLOAD_FILE,
-            on_click=lambda _: script_picker.pick_files(
-                allow_multiple=False,
-                allowed_extensions=["txt", "srt"],
-                dialog_title="选择口播文案 (.txt / .srt)",
-            ),
+            on_click=pick_script,
         ),
         ft.Divider(),
         ft.Text("配乐（BGM）", weight=ft.FontWeight.BOLD),
@@ -225,11 +308,7 @@ def main(page: ft.Page) -> None:
                     icon=ft.Icons.LIBRARY_MUSIC,
                     bgcolor=ft.Colors.ORANGE_400,
                     color=ft.Colors.WHITE,
-                    on_click=lambda _: bgm_picker.pick_files(
-                        allow_multiple=False,
-                        allowed_extensions=["mp3", "wav", "m4a"],
-                        dialog_title="选择配乐文件",
-                    ),
+                    on_click=pick_bgm,
                 ),
             ],
             alignment=ft.MainAxisAlignment.START,
@@ -245,3 +324,4 @@ def main(page: ft.Page) -> None:
             ]
         ),
     )
+    mark_startup_ok()
