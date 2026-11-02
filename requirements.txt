@@ -1,4 +1,11 @@
-flet>=0.24.0,<1.0
+# flet-desktop is a separate distribution; the flet wheel does not depend on it.
+# Without it, a frozen app calls pip and then exit(), which raises
+# NameError: name 'exit' is not defined under PyInstaller.
+# Native binaries are not in the wheel. packaging/fetch_flet_desktop_client.py
+# downloads the matching flet-windows.zip and remix.spec packs it at
+# flet_desktop/app/ so desktop startup stays offline.
+flet==0.86.5
+flet-desktop==0.86.5
 faster-whisper>=1.0.0
 edge-tts>=6.1.0
 opencv-python-headless>=4.8.0

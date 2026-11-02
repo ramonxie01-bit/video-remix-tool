@@ -3,7 +3,7 @@
 
 #define MyAppName "社媒视频混剪"
 #define MyAppNameAlt "鲸点混剪部门版"
-#define MyAppVersion "0.3.0"
+#define MyAppVersion "0.3.1"
 #define MyAppPublisher "鲸点"
 #define MyAppExeName "社媒视频混剪.exe"
 
@@ -26,7 +26,13 @@ PrivilegesRequired=lowest
 PrivilegesRequiredOverridesAllowed=dialog
 
 [Languages]
-Name: "chinesesimplified"; MessagesFile: "compiler:Languages\ChineseSimplified.isl"
+; ChineseSimplified.isl is not shipped with every Inno Setup install.
+; build_windows.ps1 downloads it next to this script when it can.
+; English is always available so a missing translation does not block Setup.exe,
+; and Setup.exe itself never blocks the portable folder.
+#ifexist "ChineseSimplified.isl"
+Name: "chinesesimplified"; MessagesFile: "ChineseSimplified.isl"
+#endif
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Tasks]

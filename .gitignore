@@ -1,4 +1,6 @@
 __pycache__/
+packaging/.flet_client/
+packaging/ChineseSimplified.isl
 *.py[cod]
 .venv/
 venv/

@@ -1,10 +1,10 @@
-# Windows 打包说明（部门版 v0.3.0）
+# Windows 打包说明（部门版 v0.3.1）
 
 本机是 Linux 时 **不能** 产出可用的 Windows `.exe`。请在 **Windows x64** 或 **GitHub Actions `windows-latest`** 上打包。
 
 ## 一键（推荐：同事 Windows 构建机）
 
-1. 解压 `remix_tool_windows_pack_v0.3.0.zip` 到任意目录。
+1. 解压 `remix_tool_windows_pack_v0.3.1.zip` 到任意目录。
 2. 放入 ffmpeg（二选一）:
    - 手动：把 `ffmpeg.exe` / `ffprobe.exe` 放到 `assets\ffmpeg\`（见该目录 README）
    - 或跳过手动，直接用 CI workflow 里的下载步骤
@@ -18,7 +18,7 @@ powershell -ExecutionPolicy Bypass -File packaging\build_windows.ps1
 
 6. 产物：
    - 便携目录：`dist\社媒视频混剪\`
-   - 安装包（有 Inno 时）：`deliver_win\社媒视频混剪_Setup_v0.3.0.exe`
+   - 安装包（有 Inno 时）：`deliver_win\社媒视频混剪_Setup_v0.3.1.exe`（缺语言文件时仍生成英文安装包，失败也不影响便携目录）
 
 仅要便携目录、跳过安装包：
 
@@ -41,7 +41,9 @@ powershell -ExecutionPolicy Bypass -File packaging\build_windows.ps1 -SkipInno
 
 ## 版本
 
-- `assets/version.json` → `0.3.0`
+- `assets/version.json` → `0.3.1`
+- 便携包文件名：`remix_tool_portable_v0.3.1.zip`
+- `requirements.txt` 固定 `flet==0.86.5` 与 `flet-desktop==0.86.5`。打包前 `packaging/fetch_flet_desktop_client.py` 下载对应的 `flet-windows.zip`，`remix.spec` 把它放进 `flet_desktop/app/`。冻结程序因此能 import `flet_desktop`，并离线解压桌面客户端，不会再走 `pip install flet-desktop` / `exit(1)`。
 - 成片类型：`assets/templates_hot/styles.json`（factory / reverse_hook / seed / explainer）随包打入
 
 ## 注意

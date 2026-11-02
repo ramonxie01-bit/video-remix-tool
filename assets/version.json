@@ -1,5 +1,5 @@
 {
-  "version": "0.3.0",
+  "version": "0.3.1",
   "channel": "dept",
-  "notes": "成片类型四类真实节奏 + 文案导入 / 配乐 / 检查更新；Windows 部门安装包"
+  "notes": "Windows 便携包内置 flet-desktop 与 flet-windows 客户端，离线启动不再 pip install"
 }
