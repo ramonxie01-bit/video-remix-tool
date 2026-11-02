@@ -30,8 +30,24 @@ PIP_MARKERS = (
 )
 
 
+def _emit(message: str, *, err: bool = False) -> None:
+    """Write UTF-8 without going through the Windows cp1252 console encoder.
+
+    The dist path contains the app name. A cp1252 stdout raises
+    UnicodeEncodeError before the frozen-app checks can finish.
+    """
+    stream = sys.stderr if err else sys.stdout
+    data = (message + "\n").encode("utf-8", errors="backslashreplace")
+    buffer = getattr(stream, "buffer", None)
+    if buffer is not None:
+        buffer.write(data)
+        buffer.flush()
+        return
+    stream.write(message + "\n")
+
+
 def _fail(message: str) -> None:
-    print(message, file=sys.stderr)
+    _emit(message, err=True)
     raise SystemExit(1)
 
 
@@ -79,14 +95,14 @@ def assert_module_frozen(exe: Path) -> None:
         loose = list(exe.parent.rglob("flet_desktop/version.py"))
         if not loose:
             _fail(f"Could not read frozen flet_desktop module ({exc})")
-        print(f"WARNING: PYZ reader failed ({exc}); loose module copy at {loose[0]}")
+        _emit(f"WARNING: PYZ reader failed ({exc}); loose module copy at {loose[0]}")
         return
     needed = ("flet_desktop", "flet_desktop.version")
     missing = [mod for mod in needed if mod not in names]
     if missing:
         sample = sorted(n for n in names if "flet" in n.lower())[:40]
         _fail(f"Frozen archive missing {missing}. flet-related entries: {sample}")
-    print(f"PYZ contains flet_desktop ({len(names)} modules)")
+    _emit(f"PYZ contains flet_desktop ({len(names)} modules)")
 
 
 def _crash_text(exe: Path) -> str:
@@ -109,7 +125,7 @@ def smoke_launch(exe: Path, seconds: float) -> None:
     env["FLET_CLIENT_URL"] = "http://127.0.0.1:9/flet-desktop-must-be-bundled.zip"
     env.pop("REMIX_UI_WEB", None)
 
-    print(f"Smoke launch {exe} for up to {seconds:.0f}s")
+    _emit(f"Smoke launch {exe} for up to {seconds:.0f}s")
     proc = subprocess.Popen([str(exe)], env=env, cwd=str(Path.home()))
     found: Path | None = None
     deadline = time.time() + seconds
@@ -150,7 +166,7 @@ def smoke_launch(exe: Path, seconds: float) -> None:
             "Smoke launch did not extract flet.exe from the bundled zip "
             f"(exit={proc.poll()}).\ncrash:\n{text}\ncache:\n" + "\n".join(listing)
         )
-    print(f"Smoke OK: extracted offline client at {found} (no pip)")
+    _emit(f"Smoke OK: extracted offline client at {found} (no pip)")
     if crash.exists():
         crash.unlink()
 
@@ -165,11 +181,11 @@ def main() -> None:
         _fail(f"Dist directory missing: {args.dist}")
     exe = find_app_exe(args.dist)
     bundled = find_bundled_zip(args.dist)
-    print(f"Bundled client zip: {bundled} ({bundled.stat().st_size} bytes), member {EXPECTED_MEMBER}")
+    _emit(f"Bundled client zip: {bundled} ({bundled.stat().st_size} bytes), member {EXPECTED_MEMBER}")
     assert_module_frozen(exe)
     if args.smoke:
         smoke_launch(exe, args.smoke_seconds)
-    print("verify_windows_dist: OK")
+    _emit("verify_windows_dist: OK")
 
 
 if __name__ == "__main__":

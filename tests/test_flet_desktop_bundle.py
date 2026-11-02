@@ -57,6 +57,15 @@ def test_assert_windows_client_zip_requires_flet_exe(tmp_path: Path):
         mod.assert_windows_client_zip(bad)
 
 
+def test_verify_script_does_not_use_cp1252_print_for_dist_path():
+    text = (ROOT / "packaging" / "verify_windows_dist.py").read_text(encoding="utf-8")
+    assert "buffer.write" in text
+    assert "Bundled client zip" in text
+    # The dist folder name is not ASCII. print() on a cp1252 GitHub runner
+    # raised UnicodeEncodeError before the frozen-module check ran.
+    assert "print(f\"Bundled client zip:" not in text
+
+
 def test_version_is_0_3_1():
     version = (ROOT / "assets" / "version.json").read_text(encoding="utf-8")
     assert '"version": "0.3.1"' in version

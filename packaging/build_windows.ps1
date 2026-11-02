@@ -73,6 +73,8 @@ Write-Host "==> PyInstaller packaging/remix.spec" -ForegroundColor Cyan
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 Write-Host "==> verify flet-desktop is packed (no pip path)" -ForegroundColor Cyan
+$env:PYTHONUTF8 = "1"
+$env:PYTHONIOENCODING = "utf-8"
 & $Python packaging\verify_windows_dist.py --smoke
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
