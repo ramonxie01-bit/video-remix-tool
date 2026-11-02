@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import inspect
 import sys
+import tempfile
 from pathlib import Path
 
 _ROOT = Path(__file__).resolve().parents[1]
@@ -67,7 +68,8 @@ assert asyncio.run(take_directory(_Cancel())) is None
 assert asyncio.run(take_script_import(_Cancel())) is None
 assert asyncio.run(take_bgm_import(_Cancel())) is None
 
-script = Path("/tmp/remix_smoke_script.txt")
+# tempfile, not /tmp: the Windows runner has no /tmp directory.
+script = Path(tempfile.gettempdir()) / "remix_smoke_script.txt"
 script.write_text("钩子\n正文\n", encoding="utf-8")
 
 
