@@ -44,7 +44,7 @@ jobs:
         run: |
           $vj = Get-Content assets/version.json -Raw -Encoding UTF8 | ConvertFrom-Json
           $v = [string]$vj.version
-          if (-not $v) { $v = "0.3.0" }
+          if (-not $v) { $v = "0.3.1" }
           "version=$v" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
           Write-Host "version=$v"
 
@@ -75,22 +75,36 @@ jobs:
           pip install -r requirements.txt
           pip install pyinstaller
 
+      - name: Download Flet Windows desktop client
+        shell: pwsh
+        run: |
+          python packaging/fetch_flet_desktop_client.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
       - name: PyInstaller
         shell: pwsh
         run: |
           python -m PyInstaller --noconfirm --clean packaging/remix.spec
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           if (-not (Test-Path "dist/社媒视频混剪")) { throw "dist missing" }
+
+      - name: Verify frozen app bundles flet-desktop offline
+        shell: pwsh
+        run: |
+          python packaging/verify_windows_dist.py --smoke --smoke-seconds 60
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Zip portable dist
         shell: pwsh
         run: |
           $out = "deliver_win"
           New-Item -ItemType Directory -Force -Path $out | Out-Null
-          $zipName = "社媒视频混剪_portable_v$($env:VER).zip"
-          # GITHUB_OUTPUT version
           $ver = "${{ steps.ver.outputs.version }}"
-          $zipName = "社媒视频混剪_portable_v${ver}.zip"
+          $zipName = "remix_tool_portable_v${ver}.zip"
           if (Test-Path "$out/$zipName") { Remove-Item "$out/$zipName" -Force }
+          if (Test-Path "dist/社媒视频混剪/remix_crash.log") {
+            Remove-Item "dist/社媒视频混剪/remix_crash.log" -Force
+          }
           Compress-Archive -Path "dist/社媒视频混剪\*" -DestinationPath "$out/$zipName" -Force
           Write-Host "Wrote $out/$zipName"
 
@@ -114,12 +128,35 @@ jobs:
             if ($cmd) { $iscc = $cmd.Source }
           }
           if (-not $iscc) {
-            Write-Warning "ISCC not found; skipping Setup.exe"
+            Write-Warning "ISCC not found; portable zip is the release artifact"
             exit 0
           }
+          $isl = "packaging/ChineseSimplified.isl"
+          if (-not (Test-Path $isl)) {
+            $urls = @(
+              "https://raw.githubusercontent.com/jrsoftware/issrc/main/Files/Languages/ChineseSimplified.isl",
+              "https://raw.githubusercontent.com/kira-96/Inno-Setup-Chinese-Simplified-Translation/main/ChineseSimplified.isl"
+            )
+            foreach ($u in $urls) {
+              try {
+                Invoke-WebRequest -Uri $u -OutFile $isl -UseBasicParsing
+                if ((Get-Item $isl).Length -gt 500) { break }
+              } catch {
+                Write-Warning "ISL download failed: $u"
+                Remove-Item $isl -ErrorAction SilentlyContinue
+              }
+            }
+          }
           New-Item -ItemType Directory -Force -Path deliver_win | Out-Null
-          & $iscc packaging\remix_setup.iss
-          Get-ChildItem deliver_win
+          Push-Location packaging
+          & $iscc .\remix_setup.iss
+          $code = $LASTEXITCODE
+          Pop-Location
+          Get-ChildItem deliver_win -ErrorAction SilentlyContinue
+          if ($code -ne 0) {
+            Write-Warning "ISCC failed (exit $code). Portable zip is still uploaded."
+            exit 0
+          }
 
       - name: Upload Windows artifacts
         uses: actions/upload-artifact@v4

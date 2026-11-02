@@ -43,7 +43,7 @@ pytest tests/ -q
 ```
 
 ## 版本
-当前部门版 **0.3.0**（`assets/version.json`）：四类成片模板真实节奏 + 文案导入 / 配乐 / 检查更新。
+当前部门版 **0.3.1**（`assets/version.json`）：Windows 便携包内置 flet-desktop 与桌面客户端，离线启动不再 pip install。
 
 ## 打包（Windows）
 见 `packaging/BUILD_WINDOWS.md`。摘要：在 Windows 或 GitHub Actions `windows-latest` 上执行 `packaging/build_windows.ps1`；ffmpeg 随包内嵌，Whisper 模型首次下载缓存。Linux 主机只能做源码交付 zip，不能产出 Windows exe。

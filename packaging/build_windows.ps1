@@ -16,8 +16,28 @@ $ErrorActionPreference = "Stop"
 $Root = Split-Path -Parent $PSScriptRoot
 Set-Location $Root
 
+function Ensure-ChineseIsl {
+  $dest = Join-Path $Root "packaging\ChineseSimplified.isl"
+  if (Test-Path $dest) { return }
+  $urls = @(
+    "https://raw.githubusercontent.com/jrsoftware/issrc/main/Files/Languages/ChineseSimplified.isl",
+    "https://raw.githubusercontent.com/kira-96/Inno-Setup-Chinese-Simplified-Translation/main/ChineseSimplified.isl"
+  )
+  foreach ($u in $urls) {
+    try {
+      Write-Host "Downloading ChineseSimplified.isl"
+      Invoke-WebRequest -Uri $u -OutFile $dest -UseBasicParsing
+      if ((Get-Item $dest).Length -gt 500) { return }
+    } catch {
+      Write-Warning $_
+    }
+    Remove-Item $dest -ErrorAction SilentlyContinue
+  }
+  Write-Warning "未下载到 ChineseSimplified.isl。安装包将只用英文语言；便携版不受影响。"
+}
+
 $VersionFile = Join-Path $Root "assets\version.json"
-$ver = "0.3.0"
+$ver = "0.3.1"
 if (Test-Path $VersionFile) {
   try {
     $vj = Get-Content $VersionFile -Raw -Encoding UTF8 | ConvertFrom-Json
@@ -44,8 +64,16 @@ Write-Host "==> pip install deps + pyinstaller" -ForegroundColor Cyan
 & $Python -m pip install -r requirements.txt
 & $Python -m pip install pyinstaller
 
+Write-Host "==> fetch flet-windows.zip (offline desktop client)" -ForegroundColor Cyan
+& $Python packaging\fetch_flet_desktop_client.py
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
 Write-Host "==> PyInstaller packaging/remix.spec" -ForegroundColor Cyan
 & $Python -m PyInstaller --noconfirm --clean packaging\remix.spec
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+Write-Host "==> verify flet-desktop is packed (no pip path)" -ForegroundColor Cyan
+& $Python packaging\verify_windows_dist.py --smoke
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 $distDir = Join-Path $Root "dist\社媒视频混剪"
@@ -79,7 +107,17 @@ if (-not $iscc) {
   exit 0
 }
 
+Ensure-ChineseIsl
 Write-Host "==> Inno Setup: $iscc" -ForegroundColor Cyan
-& $iscc (Join-Path $Root "packaging\remix_setup.iss")
-if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+Push-Location (Join-Path $Root "packaging")
+$prevEap = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
+& $iscc .\remix_setup.iss
+$innoCode = $LASTEXITCODE
+$ErrorActionPreference = $prevEap
+Pop-Location
+if ($innoCode -ne 0) {
+  Write-Warning "Inno Setup 失败（便携目录已可用，不阻断）。常见原因：语言文件或 ISCC 版本。"
+  exit 0
+}
 Write-Host "==> Setup 产出见 deliver_win\" -ForegroundColor Green
