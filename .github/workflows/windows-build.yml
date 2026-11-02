@@ -1,0 +1,132 @@
+# 社媒视频混剪 — Windows 部门安装包
+# Ramon 确认「走 CI」：推送本文件后，workflow_dispatch 或 push 即可在 windows-latest 出包。
+name: windows-build
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, master]
+    paths:
+      - "app/**"
+      - "assets/**"
+      - "packaging/**"
+      - "requirements.txt"
+      - ".github/workflows/windows-build.yml"
+  pull_request:
+    paths:
+      - "app/**"
+      - "assets/**"
+      - "packaging/**"
+      - "requirements.txt"
+      - ".github/workflows/windows-build.yml"
+
+concurrency:
+  group: windows-build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Read app version
+        id: ver
+        shell: pwsh
+        run: |
+          $vj = Get-Content assets/version.json -Raw -Encoding UTF8 | ConvertFrom-Json
+          $v = [string]$vj.version
+          if (-not $v) { $v = "0.3.0" }
+          "version=$v" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          Write-Host "version=$v"
+
+      - name: Download ffmpeg win64 static
+        shell: pwsh
+        run: |
+          $dest = "assets/ffmpeg"
+          New-Item -ItemType Directory -Force -Path $dest | Out-Null
+          # gyan.dev essentials build (zip contains bin/ffmpeg.exe + ffprobe.exe)
+          $url = "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip"
+          $zip = Join-Path $env:RUNNER_TEMP "ffmpeg-essentials.zip"
+          Write-Host "Downloading $url"
+          Invoke-WebRequest -Uri $url -OutFile $zip -UseBasicParsing
+          $extract = Join-Path $env:RUNNER_TEMP "ffmpeg-extract"
+          if (Test-Path $extract) { Remove-Item $extract -Recurse -Force }
+          Expand-Archive -Path $zip -DestinationPath $extract -Force
+          $ff = Get-ChildItem -Path $extract -Recurse -Filter ffmpeg.exe | Select-Object -First 1
+          $fp = Get-ChildItem -Path $extract -Recurse -Filter ffprobe.exe | Select-Object -First 1
+          if (-not $ff -or -not $fp) { throw "ffmpeg.exe / ffprobe.exe not found in archive" }
+          Copy-Item $ff.FullName (Join-Path $dest "ffmpeg.exe") -Force
+          Copy-Item $fp.FullName (Join-Path $dest "ffprobe.exe") -Force
+          Get-ChildItem $dest
+
+      - name: Install Python dependencies
+        shell: pwsh
+        run: |
+          python -m pip install -U pip
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      - name: PyInstaller
+        shell: pwsh
+        run: |
+          python -m PyInstaller --noconfirm --clean packaging/remix.spec
+          if (-not (Test-Path "dist/社媒视频混剪")) { throw "dist missing" }
+
+      - name: Zip portable dist
+        shell: pwsh
+        run: |
+          $out = "deliver_win"
+          New-Item -ItemType Directory -Force -Path $out | Out-Null
+          $zipName = "社媒视频混剪_portable_v$($env:VER).zip"
+          # GITHUB_OUTPUT version
+          $ver = "${{ steps.ver.outputs.version }}"
+          $zipName = "社媒视频混剪_portable_v${ver}.zip"
+          if (Test-Path "$out/$zipName") { Remove-Item "$out/$zipName" -Force }
+          Compress-Archive -Path "dist/社媒视频混剪\*" -DestinationPath "$out/$zipName" -Force
+          Write-Host "Wrote $out/$zipName"
+
+      - name: Install Inno Setup (optional)
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          choco install innosetup -y --no-progress
+          refreshenv
+
+      - name: Build Setup.exe with ISCC
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          $iscc = @(
+            "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe",
+            "${env:ProgramFiles}\Inno Setup 6\ISCC.exe"
+          ) | Where-Object { Test-Path $_ } | Select-Object -First 1
+          if (-not $iscc) {
+            $cmd = Get-Command iscc -ErrorAction SilentlyContinue
+            if ($cmd) { $iscc = $cmd.Source }
+          }
+          if (-not $iscc) {
+            Write-Warning "ISCC not found; skipping Setup.exe"
+            exit 0
+          }
+          New-Item -ItemType Directory -Force -Path deliver_win | Out-Null
+          & $iscc packaging\remix_setup.iss
+          Get-ChildItem deliver_win
+
+      - name: Upload Windows artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-remix-dist-v${{ steps.ver.outputs.version }}
+          path: |
+            deliver_win/**
+            dist/社媒视频混剪/**
+          if-no-files-found: error
+          retention-days: 14

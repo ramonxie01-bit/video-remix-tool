@@ -1,0 +1,49 @@
+{
+  "version": 1,
+  "styles": {
+    "factory": {
+      "label_zh": "工厂实拍",
+      "tip": "快切车间/仓库，前几秒出货画面",
+      "piece_sec": 1.55,
+      "region_bias": 0.08,
+      "max_cuts": 14,
+      "hook_sec": 2.0,
+      "subtitle_fontsize": 18,
+      "subtitle_margin_v": 48,
+      "bgm_volume_default": 0.22
+    },
+    "reverse_hook": {
+      "label_zh": "反向钩子",
+      "tip": "先反常识/避雷，再给解法；首镜稍长",
+      "piece_sec": 1.75,
+      "region_bias": 0.18,
+      "max_cuts": 12,
+      "hook_sec": 3.2,
+      "subtitle_fontsize": 20,
+      "subtitle_margin_v": 52,
+      "bgm_volume_default": 0.18
+    },
+    "seed": {
+      "label_zh": "种草",
+      "tip": "成果特写多、切得更密、强 CTA",
+      "piece_sec": 1.35,
+      "region_bias": 0.55,
+      "max_cuts": 16,
+      "hook_sec": 2.2,
+      "subtitle_fontsize": 22,
+      "subtitle_margin_v": 56,
+      "bgm_volume_default": 0.26
+    },
+    "explainer": {
+      "label_zh": "知识科普",
+      "tip": "切镜偏慢、字幕更大、配乐压低保解说",
+      "piece_sec": 3.2,
+      "region_bias": 0.22,
+      "max_cuts": 6,
+      "hook_sec": 2.8,
+      "subtitle_fontsize": 26,
+      "subtitle_margin_v": 64,
+      "bgm_volume_default": 0.12
+    }
+  }
+}
