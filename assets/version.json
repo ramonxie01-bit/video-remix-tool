@@ -1,5 +1,5 @@
 {
-  "version": "0.3.1",
+  "version": "0.3.2",
   "channel": "dept",
-  "notes": "Windows 便携包内置 flet-desktop 与 flet-windows 客户端，离线启动不再 pip install"
+  "notes": "修复 Flet 0.86 FilePicker 启动崩溃：不再向构造函数传 on_result，素材文件夹 / 文案 / 配乐改为 await get_directory_path 与 pick_files 取结果"
 }

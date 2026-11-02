@@ -6,8 +6,10 @@ Static checks:
 
 With --smoke, launch the windowed exe briefly with FLET_CLIENT_URL pointed at
 an unreachable address. A good bundle extracts ~/.flet/client/*/flet/flet.exe
-from the packed zip and never calls pip. A bad bundle exits on
-``NameError: name 'exit' is not defined``.
+from the packed zip, never calls pip, and writes remix_startup_ok.txt after
+the three FilePickers are constructed. A bad bundle exits on
+``NameError: name 'exit' is not defined`` or leaves the startup marker missing
+(for example FilePicker(on_result=...) on Flet 0.86).
 """
 from __future__ import annotations
 
@@ -22,6 +24,7 @@ from pathlib import Path
 from flet_desktop_bundle import EXPECTED_MEMBER, ROOT, assert_windows_client_zip
 
 APP_EXE_NAME = "社媒视频混剪.exe"
+STARTUP_OK_NAME = "remix_startup_ok.txt"
 PIP_MARKERS = (
     "NameError",
     "name 'exit' is not defined",
@@ -112,13 +115,21 @@ def _crash_text(exe: Path) -> str:
     return log.read_text(encoding="utf-8", errors="replace")
 
 
+def _startup_log_is_crash(text: str) -> bool:
+    """remix_crash.log is written only by the frozen excepthook."""
+    return bool(text.strip())
+
+
 def smoke_launch(exe: Path, seconds: float) -> None:
     cache_root = Path.home() / ".flet" / "client"
     if cache_root.exists():
         shutil.rmtree(cache_root)
     crash = exe.parent / "remix_crash.log"
+    startup_ok = exe.parent / STARTUP_OK_NAME
     if crash.exists():
         crash.unlink()
+    if startup_ok.exists():
+        startup_ok.unlink()
 
     env = dict(os.environ)
     # If the bundle has no zip, Flet downloads this URL. It must not be reached.
@@ -134,12 +145,22 @@ def smoke_launch(exe: Path, seconds: float) -> None:
             text = _crash_text(exe)
             if any(marker in text for marker in PIP_MARKERS):
                 _fail("Frozen app hit the pip/exit path:\n" + text)
+            if _startup_log_is_crash(text):
+                _fail("Frozen app crashed during startup:\n" + text)
             matches = list(cache_root.glob("*/flet/flet.exe")) if cache_root.exists() else []
             if matches and matches[0].is_file():
                 found = matches[0]
-                time.sleep(2)
+            # main() writes this only after the three FilePickers construct
+            # and the page is built. A native folder dialog is not opened.
+            if found is not None and startup_ok.is_file():
+                time.sleep(1)
+                text = _crash_text(exe)
+                if any(marker in text for marker in PIP_MARKERS):
+                    _fail("Frozen app hit the pip/exit path:\n" + text)
+                if _startup_log_is_crash(text):
+                    _fail("Frozen app crashed during startup:\n" + text)
                 break
-            if proc.poll() is not None and not matches:
+            if proc.poll() is not None and found is None and not startup_ok.is_file():
                 break
             time.sleep(1)
     finally:
@@ -158,6 +179,8 @@ def smoke_launch(exe: Path, seconds: float) -> None:
     text = _crash_text(exe)
     if any(marker in text for marker in PIP_MARKERS):
         _fail("Frozen app hit the pip/exit path:\n" + text)
+    if _startup_log_is_crash(text):
+        _fail("Frozen app crashed during startup:\n" + text)
     if found is None:
         listing = []
         if cache_root.exists():
@@ -166,7 +189,15 @@ def smoke_launch(exe: Path, seconds: float) -> None:
             "Smoke launch did not extract flet.exe from the bundled zip "
             f"(exit={proc.poll()}).\ncrash:\n{text}\ncache:\n" + "\n".join(listing)
         )
-    _emit(f"Smoke OK: extracted offline client at {found} (no pip)")
+    if not startup_ok.is_file():
+        _fail(
+            "Smoke launch extracted the desktop client but the app did not "
+            f"finish building the window ({STARTUP_OK_NAME} missing). "
+            "FilePicker construction runs before that marker is written "
+            f"(exit={proc.poll()}).\ncrash:\n{text}"
+        )
+    _emit(f"Smoke OK: extracted offline client at {found}; UI startup marker present")
+    startup_ok.unlink()
     if crash.exists():
         crash.unlink()
 
