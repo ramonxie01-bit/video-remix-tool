@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import importlib
 import inspect
 from pathlib import Path
 
@@ -12,14 +13,21 @@ from app.ui.main_window import (
     apply_bgm_pick,
     apply_folder_pick,
     apply_script_pick,
+    apply_video_files_pick,
     bgm_pick_kwargs,
+    format_ingest_status,
     make_import_pickers,
     mark_startup_ok,
     script_pick_kwargs,
     take_bgm_import,
     take_directory,
     take_script_import,
+    take_video_files_import,
+    video_pick_kwargs,
 )
+
+ingest_mod = importlib.import_module("app.pipeline.ingest")
+VIDEO_EXTS = ingest_mod.VIDEO_EXTS
 
 
 class _Picker:
@@ -40,7 +48,7 @@ class _Picker:
 
 def test_filepicker_constructor_rejects_on_result():
     pickers = make_import_pickers()
-    assert len(pickers) == 3
+    assert len(pickers) == 4
     for picker in pickers:
         assert isinstance(picker, ft.FilePicker)
         assert inspect.iscoroutinefunction(picker.pick_files)
@@ -57,6 +65,76 @@ def test_folder_pick_replaces_previous_path():
     assert apply_folder_pick(picked, "") is None
     assert apply_folder_pick(picked, "/footage") == "/footage"
     assert picked == ["/footage"]
+
+
+def test_folder_and_file_picks_are_mutually_exclusive():
+    picked = ["/old/folder"]
+    shown = apply_video_files_pick(picked, ["/v/a.mp4", "", "/v/b.mov"])
+    assert shown == ["/v/a.mp4", "/v/b.mov"]
+    assert picked == ["/v/a.mp4", "/v/b.mov"]
+    assert apply_video_files_pick(picked, []) is None
+    assert apply_video_files_pick(picked, ["", ""]) is None
+    assert picked == ["/v/a.mp4", "/v/b.mov"]
+    assert apply_folder_pick(picked, "/new/folder") == "/new/folder"
+    assert picked == ["/new/folder"]
+
+
+def test_video_pick_kwargs_allow_multiple_video_exts():
+    kwargs = video_pick_kwargs()
+    assert kwargs["allow_multiple"] is True
+    assert kwargs["file_type"] is ft.FilePickerFileType.CUSTOM
+    assert kwargs["dialog_title"]
+    assert set(kwargs["allowed_extensions"]) == {ext.lstrip(".") for ext in VIDEO_EXTS}
+    assert "mp4" in kwargs["allowed_extensions"]
+    assert "mov" in kwargs["allowed_extensions"]
+
+
+def test_take_video_files_import_uses_pick_files():
+    chosen = [
+        ft.FilePickerFile(id=1, name="a.mp4", size=1, path="/v/a.mp4"),
+        ft.FilePickerFile(id=2, name="b.mov", size=1, path="/v/b.mov"),
+        ft.FilePickerFile(id=3, name="c.mkv", size=1, path=None),
+    ]
+    picker = _Picker(files=chosen)
+    result = asyncio.run(take_video_files_import(picker))
+    assert result == ["/v/a.mp4", "/v/b.mov"]
+    assert picker.pick_kwargs == video_pick_kwargs()
+    assert asyncio.run(take_video_files_import(_Picker(files=[]))) is None
+    assert asyncio.run(take_video_files_import(_Picker(files=None))) is None
+
+
+def test_format_ingest_status_reports_counts_and_skips(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    assert format_ingest_status([]) == "未选择素材"
+
+    empty = tmp_path / "footage"
+    empty.mkdir()
+    (empty / "notes.txt").write_text("not a video", encoding="utf-8")
+    missing = format_ingest_status([str(empty)])
+    assert "未找到视频" in missing
+    assert "mp4" in missing and "mov" in missing
+    assert str(empty) in missing
+
+    good = tmp_path / "ok.mp4"
+    bad = tmp_path / "broken.mov"
+    good.write_bytes(b"x")
+    bad.write_bytes(b"x")
+
+    def fake_probe(path: Path) -> dict:
+        if path.name == "ok.mp4":
+            return {"duration": 2.5, "width": 1920, "height": 1080}
+        return {}
+
+    monkeypatch.setattr(ingest_mod, "probe", fake_probe)
+    status = format_ingest_status([str(good), str(bad)])
+    assert "已导入 1 个视频（扫描到 2 个候选）" in status
+    assert "broken.mov" in status
+    assert "ffprobe" in status
+
+    only_bad = format_ingest_status([str(bad)])
+    assert "已导入 0 个视频（扫描到 1 个候选）" in only_bad
+    assert "有效素材为 0" in only_bad
+    assert bad.name in only_bad
+    assert str(bad) in only_bad
 
 
 def test_script_and_bgm_results(tmp_path: Path):  # noqa: C901

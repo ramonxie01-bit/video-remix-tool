@@ -22,6 +22,7 @@
 | export | `export_job(cfg) -> list[Path]` | 导出成片 |
 
 ## 文案导入 / 配乐 / 检查更新
+- **素材**：UI「选择素材文件夹」或「导入视频文件」（多选 mp4 / mov / mkv / avi / m4v / webm）。两种来源互斥；选完后状态栏显示有效数 / 扫描数。probe 失败会跳过，并写出文件名和原因。
 - **文案**：内容 bot 出完整口播稿 → UI「口播文案（粘贴）」或「导入文案」(.txt / .srt) → 同一稿驱动 **字幕 + TTS**。空文案时仍走内置模板。
 - **配乐**：明显的「导入配乐」按钮，选本地 mp3 / wav / m4a（`JobConfig.bgm_path`）。
 - **更新**：`assets/version.json` +「检查更新」（读 `REMIX_UPDATE_URL` 或占位 URL）；离线不挡剪辑。模板热更新包见 `apply_hot_pack()` 骨架。
@@ -43,7 +44,7 @@ pytest tests/ -q
 ```
 
 ## 版本
-当前部门版 **0.3.2**（`assets/version.json`）：Flet 0.86 的 `FilePicker` 不再接受 `on_result`，素材文件夹、导入文案、导入配乐改为等待 `get_directory_path()` / `pick_files()` 的返回值。Windows 便携包仍内置 flet-desktop 与桌面客户端，离线启动不再 pip install。
+当前部门版 **0.3.3**（`assets/version.json`）：「导入视频文件」可多选本地 mp4/mov 等视频，选文件夹或选文件后立即显示扫描数与有效数。Flet 0.86 的 `FilePicker` 仍不接受 `on_result`，选择结果来自 `get_directory_path()` / `pick_files()`。Windows 便携包仍内置 flet-desktop 与桌面客户端，离线启动不再 pip install。
 
 ## 打包（Windows）
 见 `packaging/BUILD_WINDOWS.md`。摘要：在 Windows 或 GitHub Actions `windows-latest` 上执行 `packaging/build_windows.ps1`；ffmpeg 随包内嵌，Whisper 模型首次下载缓存。Linux 主机只能做源码交付 zip，不能产出 Windows exe。

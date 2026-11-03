@@ -6,6 +6,7 @@ import flet as ft
 
 from app.models import JobConfig
 from app.pipeline.export import export_job
+from app.pipeline.ingest import VIDEO_EXTS, ingest_with_report
 from app.pipeline.styles import get_style, style_options
 from app.services.update_check import LOCAL_VERSION, check_update
 
@@ -15,15 +16,15 @@ from app.services.update_check import LOCAL_VERSION, check_update
 STARTUP_OK_NAME = "remix_startup_ok.txt"
 
 
-def make_import_pickers() -> tuple[ft.FilePicker, ft.FilePicker, ft.FilePicker]:
-    """Folder, script, and BGM pickers.
+def make_import_pickers() -> tuple[ft.FilePicker, ft.FilePicker, ft.FilePicker, ft.FilePicker]:
+    """Folder, video-files, script, and BGM pickers.
 
     Flet 0.86 FilePicker is a service. The constructor does not take
     on_result, and pick_files / get_directory_path are async and return
     the selection. Instances register themselves on the current page.
     Do not place them on the page overlay (that control is unknown in 0.86).
     """
-    return ft.FilePicker(), ft.FilePicker(), ft.FilePicker()
+    return ft.FilePicker(), ft.FilePicker(), ft.FilePicker(), ft.FilePicker()
 
 
 def script_pick_kwargs() -> dict:
@@ -45,13 +46,63 @@ def bgm_pick_kwargs() -> dict:
     }
 
 
+def video_pick_kwargs() -> dict:
+    # allowed_extensions is applied only when file_type is CUSTOM.
+    return {
+        "allow_multiple": True,
+        "file_type": ft.FilePickerFileType.CUSTOM,
+        "allowed_extensions": sorted(ext.lstrip(".") for ext in VIDEO_EXTS),
+        "dialog_title": "选择视频文件（可多选）",
+    }
+
+
 def apply_folder_pick(picked: list[str], path: str | None) -> str | None:
-    """Store a chosen footage folder. None or blank means the dialog was cancelled."""
+    """Replace inputs with one footage folder (mutually exclusive with file picks).
+
+    None or blank means the dialog was cancelled. Choosing a folder clears any
+    previously selected video files so JobConfig.inputs has a single source.
+    """
     if not path:
         return None
     picked.clear()
     picked.append(path)
     return path
+
+
+def apply_video_files_pick(picked: list[str], paths: list[str]) -> list[str] | None:
+    """Replace inputs with multi-selected video files (mutually exclusive with folder).
+
+    Empty list means cancelled / nothing usable. Choosing files clears any
+    previously selected folder so JobConfig.inputs has a single source.
+    """
+    clean = [p for p in paths if p]
+    if not clean:
+        return None
+    picked.clear()
+    picked.extend(clean)
+    return clean
+
+
+def format_ingest_status(picked: list[str]) -> str:
+    """Immediate ingest feedback for status bar after folder/file pick."""
+    if not picked:
+        return "未选择素材"
+    report = ingest_with_report([Path(p) for p in picked])
+    exts = ", ".join(sorted(ext.lstrip(".") for ext in VIDEO_EXTS))
+    where = picked[0] if len(picked) == 1 else f"{len(picked)} 个文件"
+    if report.scanned == 0:
+        return (
+            f"未找到视频（支持 {exts}）。已选：{where}。"
+            "请用「导入视频文件」多选 mp4/mov，或把成片放进所选文件夹。"
+        )
+    parts = [f"已导入 {len(report.items)} 个视频（扫描到 {report.scanned} 个候选）"]
+    if report.skips:
+        detail = "；".join(f"{s.path.name}：{s.reason}" for s in report.skips[:5])
+        more = f" 等{len(report.skips)}个" if len(report.skips) > 5 else ""
+        parts.append(f"跳过 {len(report.skips)} 个——{detail}{more}")
+    if len(report.items) == 0:
+        parts.append(f"有效素材为 0，请检查 ffprobe / 文件是否损坏。路径：{where}")
+    return "。".join(parts)
 
 
 def apply_script_pick(file_path: str | None) -> tuple[str | None, Path | None, str]:
@@ -96,6 +147,14 @@ async def take_bgm_import(picker: ft.FilePicker) -> tuple[str | None, str] | Non
     if not files:
         return None
     return apply_bgm_pick(files[0].path)
+
+
+async def take_video_files_import(picker: ft.FilePicker) -> list[str] | None:
+    """None when the dialog is cancelled."""
+    files = await picker.pick_files(**video_pick_kwargs())
+    if not files:
+        return None
+    return [f.path for f in files if getattr(f, "path", None)]
 
 
 def mark_startup_ok() -> None:
@@ -180,13 +239,28 @@ def main(page: ft.Page) -> None:
     script_path_held: list[Path | None] = [None]
     picked_label = ft.Text("未选择素材")
 
-    folder_picker, script_picker, bgm_picker = make_import_pickers()
+    folder_picker, video_picker, script_picker, bgm_picker = make_import_pickers()
 
     async def pick_folder(_e: ft.ControlEvent) -> None:
         shown = apply_folder_pick(picked, await take_directory(folder_picker))
         if shown is None:
             return
         picked_label.value = shown
+        status.value = format_ingest_status(picked)
+        page.update()
+
+    async def pick_videos(_e: ft.ControlEvent) -> None:
+        paths = await take_video_files_import(video_picker)
+        if paths is None:
+            return
+        shown = apply_video_files_pick(picked, paths)
+        if shown is None:
+            return
+        if len(shown) == 1:
+            picked_label.value = shown[0]
+        else:
+            picked_label.value = f"已选 {len(shown)} 个视频文件"
+        status.value = format_ingest_status(picked)
         page.update()
 
     async def pick_script(_e: ft.ControlEvent) -> None:
@@ -216,7 +290,7 @@ def main(page: ft.Page) -> None:
 
     def do_export(_e: ft.ControlEvent) -> None:
         if not picked:
-            status.value = "请先选择素材文件夹"
+            status.value = "请先「选择素材文件夹」或「导入视频文件」"
             page.update()
             return
         durs = []
@@ -241,7 +315,7 @@ def main(page: ft.Page) -> None:
         else:
             use_text, use_path = script_text, (None if script_text else spath)
         cfg = JobConfig(
-            inputs=[Path(picked[0])],
+            inputs=[Path(p) for p in picked],
             out_dir=Path(out_field.value or "."),
             durations=durs,  # type: ignore[arg-type]
             voice=voice.value or "female_narration",  # type: ignore[arg-type]
@@ -279,6 +353,11 @@ def main(page: ft.Page) -> None:
                 ft.ElevatedButton(
                     "选择素材文件夹",
                     on_click=pick_folder,
+                ),
+                ft.ElevatedButton(
+                    "导入视频文件",
+                    icon=ft.Icons.VIDEO_FILE,
+                    on_click=pick_videos,
                 ),
                 picked_label,
             ]

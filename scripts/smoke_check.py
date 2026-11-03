@@ -16,21 +16,24 @@ import flet as ft
 from app.models import JobConfig
 from app.pipeline.highlights import pick_highlights
 from app.pipeline.scenes import Scene
+from app.pipeline.ingest import VIDEO_EXTS
 from app.ui.main_window import (
     apply_bgm_pick,
     apply_folder_pick,
     apply_script_pick,
+    apply_video_files_pick,
     make_import_pickers,
     take_bgm_import,
     take_directory,
     take_script_import,
+    take_video_files_import,
 )
 
 print("models ok", JobConfig(inputs=[Path(".")], out_dir=Path("/tmp/out")))
 print("highlights ok", pick_highlights([Scene(source=Path("a.mp4"), start=0, end=2, score=1)], 10))
 
 pickers = make_import_pickers()
-assert len(pickers) == 3, pickers
+assert len(pickers) == 4, pickers
 for picker in pickers:
     assert isinstance(picker, ft.FilePicker)
     assert inspect.iscoroutinefunction(picker.pick_files)
@@ -67,6 +70,34 @@ class _Cancel:
 assert asyncio.run(take_directory(_Cancel())) is None
 assert asyncio.run(take_script_import(_Cancel())) is None
 assert asyncio.run(take_bgm_import(_Cancel())) is None
+assert asyncio.run(take_video_files_import(_Cancel())) is None
+
+picked_files = ["/data/footage"]
+assert apply_video_files_pick(picked_files, ["/v/a.mp4", "/v/b.mov"]) == ["/v/a.mp4", "/v/b.mov"]
+assert picked_files == ["/v/a.mp4", "/v/b.mov"]
+assert apply_folder_pick(picked_files, "/data/footage") == "/data/footage"
+assert picked_files == ["/data/footage"]
+
+
+class _Videos:
+    def __init__(self) -> None:
+        self.kwargs = None
+
+    async def pick_files(self, **kwargs):
+        self.kwargs = kwargs
+        return [
+            ft.FilePickerFile(id=4, name="a.mp4", size=1, path="/v/a.mp4"),
+            ft.FilePickerFile(id=5, name="b.mov", size=1, path="/v/b.mov"),
+        ]
+
+
+video_picker = _Videos()
+videos = asyncio.run(take_video_files_import(video_picker))
+assert videos == ["/v/a.mp4", "/v/b.mov"]
+assert video_picker.kwargs is not None
+assert video_picker.kwargs["allow_multiple"] is True
+assert video_picker.kwargs["file_type"] == ft.FilePickerFileType.CUSTOM
+assert set(video_picker.kwargs["allowed_extensions"]) == {ext.lstrip(".") for ext in VIDEO_EXTS}
 
 # tempfile, not /tmp: the Windows runner has no /tmp directory.
 script = Path(tempfile.gettempdir()) / "remix_smoke_script.txt"

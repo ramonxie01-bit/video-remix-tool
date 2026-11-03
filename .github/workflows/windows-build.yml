@@ -46,7 +46,7 @@ jobs:
         run: |
           $vj = Get-Content assets/version.json -Raw -Encoding UTF8 | ConvertFrom-Json
           $v = [string]$vj.version
-          if (-not $v) { $v = "0.3.2" }
+          if (-not $v) { $v = "0.3.3" }
           "version=$v" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
           Write-Host "version=$v"
 

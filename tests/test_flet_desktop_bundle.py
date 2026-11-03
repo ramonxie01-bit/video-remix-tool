@@ -66,9 +66,9 @@ def test_verify_script_does_not_use_cp1252_print_for_dist_path():
     assert "print(f\"Bundled client zip:" not in text
 
 
-def test_version_is_0_3_2():
+def test_version_is_0_3_3():
     version = (ROOT / "assets" / "version.json").read_text(encoding="utf-8")
-    assert '"version": "0.3.2"' in version
+    assert '"version": "0.3.3"' in version
 
 
 def test_windows_smoke_requires_filepicker_startup_marker():
