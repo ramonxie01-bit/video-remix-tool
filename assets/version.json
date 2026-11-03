@@ -1,5 +1,5 @@
 {
-  "version": "0.3.2",
+  "version": "0.3.3",
   "channel": "dept",
-  "notes": "修复 Flet 0.86 FilePicker 启动崩溃：不再向构造函数传 on_result，素材文件夹 / 文案 / 配乐改为 await get_directory_path 与 pick_files 取结果"
+  "notes": "可多选导入本地 mp4/mov 等视频；选文件夹或选文件后显示扫描数与有效数；probe 失败跳过并写出文件名和原因。文件夹与文件互斥。FilePicker 仍 await pick_files / get_directory_path，不传 on_result。"
 }

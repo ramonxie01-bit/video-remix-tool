@@ -6,7 +6,7 @@ from pathlib import Path
 
 _ROOT = Path(__file__).resolve().parent.parent
 _VERSION_FILE = _ROOT / "assets" / "version.json"
-_FALLBACK = {"version": "0.3.2", "channel": "dept", "notes": ""}
+_FALLBACK = {"version": "0.3.3", "channel": "dept", "notes": ""}
 
 
 def version_file() -> Path:
@@ -23,4 +23,4 @@ def load_local_version() -> dict:
     return dict(_FALLBACK)
 
 
-LOCAL_VERSION: str = str(load_local_version().get("version", "0.3.2"))
+LOCAL_VERSION: str = str(load_local_version().get("version", "0.3.3"))
