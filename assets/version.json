@@ -1,5 +1,5 @@
 {
-  "version": "0.3.4",
+  "version": "0.3.5",
   "channel": "dept",
-  "notes": "文件对话框没返回路径时会说明原因；ffprobe 失败会写出原始报错；文案烧录中文字幕；没网时跳过配音仍导出字幕。请整包解压到 C:\\remix\\。"
+  "notes": "生成后可打开工厂成片审片看板；备注写在输出目录 _review\\review_notes.json。仍支持离线静音烧字幕。请整包解压到 C:\\remix\\，说明在 exe 旁边。"
 }

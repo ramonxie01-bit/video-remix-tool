@@ -13,6 +13,7 @@ on:
       - "requirements.txt"
       - "scripts/smoke_check.py"
       - "scripts/smoke_import_media.py"
+      - "docs/**"
       - ".github/workflows/windows-build.yml"
   pull_request:
     paths:
@@ -22,11 +23,15 @@ on:
       - "requirements.txt"
       - "scripts/smoke_check.py"
       - "scripts/smoke_import_media.py"
+      - "docs/**"
       - ".github/workflows/windows-build.yml"
 
 concurrency:
   group: windows-build-${{ github.ref }}
   cancel-in-progress: true
+
+permissions:
+  contents: write
 
 jobs:
   build:
@@ -48,7 +53,7 @@ jobs:
         run: |
           $vj = Get-Content assets/version.json -Raw -Encoding UTF8 | ConvertFrom-Json
           $v = [string]$vj.version
-          if (-not $v) { $v = "0.3.4" }
+          if (-not $v) { $v = "0.3.5" }
           "version=$v" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
           Write-Host "version=$v"
 
@@ -194,3 +199,30 @@ jobs:
             dist/社媒视频混剪/**
           if-no-files-found: error
           retention-days: 14
+
+      - name: Publish portable zip on main
+        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ver = "${{ steps.ver.outputs.version }}"
+          $zip = "deliver_win/remix_tool_portable_v${ver}.zip"
+          if (-not (Test-Path $zip)) { throw "missing $zip" }
+          $tag = "v$ver"
+          $notesPath = Join-Path $env:RUNNER_TEMP "remix_release_notes.txt"
+          $notes = @(
+            "社媒视频混剪 $tag 便携包。",
+            "",
+            "解压到 C:\remix\ 后双击「社媒视频混剪.exe」。同目录有「同事使用说明.txt」（在 exe 旁边）。",
+            "",
+            "导入素材，生成混剪，再点「打开审片看板」（工厂成片审片）。备注写在输出目录 _review\review_notes.json。不需要 Mac。没有网络时仍会静音烧录字幕。"
+          ) -join "`n"
+          [System.IO.File]::WriteAllText($notesPath, $notes, [System.Text.UTF8Encoding]::new($false))
+          gh release view $tag --json tagName *> $null
+          if ($LASTEXITCODE -eq 0) {
+            gh release upload $tag $zip --clobber
+            gh release edit $tag --notes-file $notesPath
+          } else {
+            gh release create $tag $zip --title "社媒视频混剪 $tag" --notes-file $notesPath
+          }

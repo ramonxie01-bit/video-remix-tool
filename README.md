@@ -19,7 +19,8 @@
 | script | `gen_script` / `resolve_script` / `load_script_file` | 内置模板或导入文案 |
 | tts | `tts(script, voice) -> Path` | 配音 wav |
 | compose | `compose(clips, srt, audio, duration) -> Path` | 合成竖屏 mp4 |
-| export | `export_job(cfg) -> list[Path]` | 导出成片 |
+| export | `export_job(cfg) -> list[Path]` | 导出成片，并写 `_review/plan.json` |
+| review | `open_review_board(out_dir)` | 本机工厂成片审片页（备注写入 `review_notes.json`） |
 
 ## 文案导入 / 配乐 / 检查更新
 - **素材**：UI「选择素材文件夹」或「导入视频文件」（多选 mp4 / mov / mkv / avi / m4v / webm）。两种来源互斥；选完后状态栏显示有效数 / 扫描数。probe 失败会跳过，并写出文件名和原因。
@@ -44,7 +45,7 @@ pytest tests/ -q
 ```
 
 ## 版本
-当前部门版 **0.3.4**（`assets/version.json`）：文件对话框没有返回路径时会写明原因；ffprobe 失败会带上原始报错；口播文案烧录中文字幕（Noto Sans SC / 微软雅黑）；没有网络时跳过配音仍出字幕。请整包解压到 `C:\remix\`，说明见 `docs/同事使用说明.txt`。Flet 0.86 的 `FilePicker` 仍不接受 `on_result`。
+当前部门版 **0.3.5**（`assets/version.json`）：生成后点「打开审片看板」（工厂成片审片，本机页面）。备注在输出目录 `_review/review_notes.json`。下次生成会尽量避开勾过「不用」的槽位。文件对话框没有返回路径时会写明原因；ffprobe 失败会带上原始报错；口播文案烧录中文字幕（Noto Sans SC / 微软雅黑）；没有网络时跳过配音仍出字幕。请整包解压到 `C:\remix\`，说明在 exe 旁边，见 `docs/同事使用说明.txt`。不需要 Mac。Flet 0.86 的 `FilePicker` 仍不接受 `on_result`。
 
 ## 打包（Windows）
 见 `packaging/BUILD_WINDOWS.md`。摘要：在 Windows 或 GitHub Actions `windows-latest` 上执行 `packaging/build_windows.ps1`；ffmpeg 随包内嵌，Whisper 模型首次下载缓存。Linux 主机只能做源码交付 zip，不能产出 Windows exe。

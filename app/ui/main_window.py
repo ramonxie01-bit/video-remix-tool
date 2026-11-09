@@ -7,6 +7,8 @@ import flet as ft
 
 from app.models import JobConfig
 from app.pipeline.export import export_job_result
+from app.review.bundle import plan_path_for
+from app.review.server import open_review_board
 from app.pipeline.ingest import VIDEO_EXTS, ingest_with_report
 from app.pipeline.script import script_rejection_reason as reject_script
 from app.pipeline.styles import get_style, style_options
@@ -283,7 +285,7 @@ def run_app() -> None:
 def main(page: ft.Page) -> None:
     page.title = "社媒视频混剪"
     page.window.width = 780
-    page.window.height = 680
+    page.window.height = 760
     page.scroll = ft.ScrollMode.AUTO
 
     status = ft.Text("导入车间成片 → 勾选 10/15/30 → 一键出竖屏（字幕+配音）")
@@ -453,12 +455,34 @@ def main(page: ft.Page) -> None:
             result = export_job_result(cfg)
             if result.outputs:
                 status.value = "完成：" + ", ".join(str(p) for p in result.outputs)
+                if plan_path_for(cfg.out_dir).is_file():
+                    status.value += "。可点「打开审片看板」查看成片和槽位。"
             else:
                 status.value = "未生成文件（检查 ffmpeg）"
             if result.warnings:
                 status.value += "。" + "；".join(result.warnings)
         except Exception as ex:  # noqa: BLE001
             status.value = f"失败：{ex}"
+        page.update()
+
+    def do_open_review(_e: ft.ControlEvent) -> None:
+        out = Path(out_field.value or ".")
+        if not plan_path_for(out).is_file():
+            status.value = (
+                "还没有审片数据。请先点「生成混剪」，"
+                "或把输出目录指到已有 _review\\plan.json 的文件夹。"
+            )
+            page.update()
+            return
+        try:
+            url = open_review_board(out)
+        except Exception as ex:  # noqa: BLE001
+            status.value = f"打开审片看板失败：{ex}"
+        else:
+            status.value = (
+                f"已打开审片看板：{url}。"
+                "备注保存在该输出目录的 _review\\review_notes.json。"
+            )
         page.update()
 
     def do_check_update(_e: ft.ControlEvent) -> None:
@@ -522,7 +546,22 @@ def main(page: ft.Page) -> None:
             alignment=ft.MainAxisAlignment.START,
         ),
         ft.Divider(),
-        ft.ElevatedButton("生成混剪", on_click=do_export, bgcolor=ft.Colors.BLUE_600, color=ft.Colors.WHITE),
+        ft.Row(
+            [
+                ft.ElevatedButton(
+                    "生成混剪",
+                    on_click=do_export,
+                    bgcolor=ft.Colors.BLUE_600,
+                    color=ft.Colors.WHITE,
+                ),
+                ft.ElevatedButton(
+                    "打开审片看板",
+                    on_click=do_open_review,
+                    bgcolor=ft.Colors.BLUE_GREY_700,
+                    color=ft.Colors.WHITE,
+                ),
+            ]
+        ),
         status,
         ft.Divider(),
         ft.Row(

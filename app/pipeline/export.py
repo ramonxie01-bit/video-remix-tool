@@ -5,7 +5,8 @@ from pathlib import Path
 
 from app.models import JobConfig
 from app.pipeline.compose import compose
-from app.pipeline.highlights import pick_highlights
+from app.pipeline.highlights import clips_use_excluded, pick_highlights
+from app.review.bundle import exclusion_ranges, write_review_bundle
 from app.pipeline.ingest import ingest
 from app.pipeline.scenes import detect_scenes
 from app.pipeline.script import resolve_script, script_rejection_reason
@@ -57,8 +58,23 @@ def export_job_result(cfg: JobConfig) -> ExportResult:
     work = cfg.out_dir / "_work"
     work.mkdir(exist_ok=True)
     result = ExportResult()
+    # Pieces actually composed. plan.json lists these clips only (no fake slots).
+    packed: list[dict] = []
     for dur in cfg.durations:
-        clips = pick_highlights(all_scenes, dur, style=style)
+        # Disabled review slots from the previous board, if the colleague saved any.
+        # enabled=false does not skip the file; see review_notes / 同事使用说明.
+        exclude = exclusion_ranges(
+            cfg.out_dir, theme=style.label_zh, duration_sec=int(dur)
+        )
+        if exclude:
+            clips = pick_highlights(all_scenes, dur, style=style, exclude=exclude)
+            if clips_use_excluded(clips, exclude):
+                result.warnings.append(
+                    f"{dur}s 有「不用」槽位没能完全避开（剩余素材不够），"
+                    "本次仍使用真实镜头，没有编造素材。"
+                )
+        else:
+            clips = pick_highlights(all_scenes, dur, style=style)
         script = resolve_script(
             script_text=user_text,
             script_path=None,
@@ -91,4 +107,27 @@ def export_job_result(cfg: JobConfig) -> ExportResult:
         )
         if out.exists():
             result.outputs.append(out)
+            packed.append(
+                {
+                    "duration_sec": int(dur),
+                    "output_path": out,
+                    "clips": clips,
+                    "copy": script.full_text,
+                }
+            )
+    if packed:
+        try:
+            pack = write_review_bundle(
+                cfg.out_dir,
+                style_id=style.id,
+                theme=style.label_zh,
+                pieces=packed,
+            )
+        except Exception as ex:  # noqa: BLE001 — board must not fail a finished mp4
+            result.warnings.append(f"审片计划未写入：{ex}")
+        else:
+            if pack.thumbs_failed and pack.thumbs_ok == 0:
+                result.warnings.append(
+                    "槽位缩略图未生成（ffmpeg 抽帧失败），审片看板仍可打开。"
+                )
     return result
