@@ -18,6 +18,7 @@ import os
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 from pathlib import Path
 
@@ -25,6 +26,8 @@ from flet_desktop_bundle import EXPECTED_MEMBER, ROOT, assert_windows_client_zip
 
 APP_EXE_NAME = "社媒视频混剪.exe"
 STARTUP_OK_NAME = "remix_startup_ok.txt"
+GUIDE_NAME = "同事使用说明.txt"
+FFMPEG_NAMES = ("ffmpeg.exe", "ffprobe.exe")
 PIP_MARKERS = (
     "NameError",
     "name 'exit' is not defined",
@@ -77,6 +80,127 @@ def find_bundled_zip(dist: Path) -> Path:
         _fail(f"Multiple flet desktop zips: {good}")
     assert_windows_client_zip(good[0])
     return good[0]
+
+
+def install_colleague_guide(exe: Path) -> None:
+    """Copy the one-pager next to the Chinese exe name so it lands in the zip."""
+    src = ROOT / "docs" / GUIDE_NAME
+    if not src.is_file():
+        _fail(f"缺少同事使用说明：{src}")
+    dest = exe.parent / GUIDE_NAME
+    shutil.copy2(src, dest)
+    _emit(f"同事使用说明: {dest.name}（与 {APP_EXE_NAME} 同目录，建议解压到 C:\\remix\\）")
+
+
+def _ffmpeg_dir_candidates(exe: Path) -> list[Path]:
+    return [
+        exe.parent / "_internal" / "assets" / "ffmpeg",
+        exe.parent / "assets" / "ffmpeg",
+    ]
+
+
+def locate_ffmpeg_bins(dist: Path, exe: Path) -> dict[str, Path]:
+    found: dict[str, Path] = {}
+    for name in FFMPEG_NAMES:
+        for directory in _ffmpeg_dir_candidates(exe):
+            candidate = directory / name
+            if candidate.is_file():
+                found[name] = candidate
+                break
+        if name in found:
+            continue
+        matches = [
+            p
+            for p in dist.rglob(name)
+            if "assets" in p.parts and "ffmpeg" in p.parts and p.is_file()
+        ]
+        if matches:
+            found[name] = matches[0]
+    return found
+
+
+def assert_ffmpeg_bins(dist: Path, exe: Path) -> dict[str, Path]:
+    found = locate_ffmpeg_bins(dist, exe)
+    missing = [name for name in FFMPEG_NAMES if name not in found]
+    if missing:
+        _fail(
+            "便携包缺少 "
+            + "、".join(missing)
+            + "。请完整解压（含 _internal\\assets\\ffmpeg），不要只拷贝 "
+            + APP_EXE_NAME
+            + "。建议解压到短路径，例如 C:\\remix\\"
+        )
+    for name, path in found.items():
+        _emit(f"bundled {name}: {path} ({path.stat().st_size} bytes)")
+    if sys.platform == "win32":
+        smoke_probe_samples(found["ffmpeg.exe"], found["ffprobe.exe"])
+    return found
+
+
+def _probe_duration(ffprobe: Path, media: Path) -> float:
+    proc = subprocess.run(
+        [
+            str(ffprobe),
+            "-v",
+            "error",
+            "-show_entries",
+            "format=duration",
+            "-of",
+            "default=nw=1:nk=1",
+            str(media),
+        ],
+        capture_output=True,
+        text=True,
+    )
+    if proc.returncode != 0:
+        err = (proc.stderr or proc.stdout or "").strip()
+        _fail(f"ffprobe {media.name} failed: {err[-400:]}")
+    try:
+        return float((proc.stdout or "").strip() or 0)
+    except ValueError:
+        _fail(f"ffprobe {media.name} duration not a number: {proc.stdout!r}")
+    return 0.0
+
+
+def smoke_probe_samples(ffmpeg: Path, ffprobe: Path) -> None:
+    """Prove the packed binaries accept an mp4 and a mov (duration > 0)."""
+    work = Path(tempfile.mkdtemp(prefix="remix-probe-"))
+    try:
+        mp4 = work / "sample.mp4"
+        mov = work / "sample.mov"
+        made = subprocess.run(
+            [
+                str(ffmpeg),
+                "-y",
+                "-f",
+                "lavfi",
+                "-i",
+                "testsrc=size=160x120:rate=15:duration=1",
+                "-pix_fmt",
+                "yuv420p",
+                "-c:v",
+                "libx264",
+                str(mp4),
+            ],
+            capture_output=True,
+        )
+        if made.returncode != 0 or not mp4.is_file():
+            err = (made.stderr or b"").decode("utf-8", errors="replace")[-400:]
+            _fail(f"bundled ffmpeg could not write sample mp4: {err}")
+        wrapped = subprocess.run(
+            [str(ffmpeg), "-y", "-i", str(mp4), "-c", "copy", "-f", "mov", str(mov)],
+            capture_output=True,
+        )
+        if wrapped.returncode != 0 or not mov.is_file():
+            err = (wrapped.stderr or b"").decode("utf-8", errors="replace")[-400:]
+            _fail(f"bundled ffmpeg could not write sample mov: {err}")
+        for sample in (mp4, mov):
+            dur = _probe_duration(ffprobe, sample)
+            _emit(f"probe {sample.name} duration={dur}")
+            if dur <= 0:
+                _fail(f"{sample.name} probe duration is {dur} (valid count would be 0)")
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
 
 
 def assert_module_frozen(exe: Path) -> None:
@@ -211,6 +335,8 @@ def main() -> None:
     if not args.dist.is_dir():
         _fail(f"Dist directory missing: {args.dist}")
     exe = find_app_exe(args.dist)
+    install_colleague_guide(exe)
+    assert_ffmpeg_bins(args.dist, exe)
     bundled = find_bundled_zip(args.dist)
     _emit(f"Bundled client zip: {bundled} ({bundled.stat().st_size} bytes), member {EXPECTED_MEMBER}")
     assert_module_frozen(exe)

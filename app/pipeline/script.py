@@ -170,6 +170,29 @@ def load_script_file(path: Path) -> Script:
     return Script(lines=lines, full_text="，".join(cues))
 
 
+def script_rejection_reason(text: str | None) -> str | None:
+    """Colleague-facing error when copy cannot drive burnt-in subtitles.
+
+    ``None`` means the text has at least one cue. Empty paste and an ``.srt``
+    with timestamps but no dialogue are rejected instead of falling back to
+    the built-in factory template.
+    """
+    raw = text or ""
+    if "-->" in raw and _SRT_TIME.search(raw):
+        if not _parse_srt(raw).lines:
+            return (
+                "文案无效：没有可用字幕。请检查 .srt 的时间轴和文字，"
+                "或改贴纯文本口播稿。"
+            )
+        return None
+    if not _split_plain_cues(raw):
+        return (
+            "文案为空或无效。请粘贴口播稿（一行一句），或导入含句子的 .txt / .srt。"
+            "没有文案就不会烧录字幕。"
+        )
+    return None
+
+
 def resolve_script(
     *,
     script_text: str | None,

@@ -12,6 +12,7 @@ on:
       - "packaging/**"
       - "requirements.txt"
       - "scripts/smoke_check.py"
+      - "scripts/smoke_import_media.py"
       - ".github/workflows/windows-build.yml"
   pull_request:
     paths:
@@ -20,6 +21,7 @@ on:
       - "packaging/**"
       - "requirements.txt"
       - "scripts/smoke_check.py"
+      - "scripts/smoke_import_media.py"
       - ".github/workflows/windows-build.yml"
 
 concurrency:
@@ -46,7 +48,7 @@ jobs:
         run: |
           $vj = Get-Content assets/version.json -Raw -Encoding UTF8 | ConvertFrom-Json
           $v = [string]$vj.version
-          if (-not $v) { $v = "0.3.3" }
+          if (-not $v) { $v = "0.3.4" }
           "version=$v" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
           Write-Host "version=$v"
 
@@ -76,6 +78,14 @@ jobs:
           python -m pip install -U pip
           pip install -r requirements.txt
           pip install pyinstaller
+
+      - name: Smoke mp4/mov ingest counts
+        shell: pwsh
+        run: |
+          $env:PYTHONUTF8 = "1"
+          $env:PYTHONIOENCODING = "utf-8"
+          python scripts/smoke_import_media.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Smoke FilePicker construction
         shell: pwsh
@@ -111,6 +121,10 @@ jobs:
         run: |
           $out = "deliver_win"
           New-Item -ItemType Directory -Force -Path $out | Out-Null
+          $guide = "docs/同事使用说明.txt"
+          $destGuide = "dist/社媒视频混剪/同事使用说明.txt"
+          if (-not (Test-Path $guide)) { throw "missing $guide" }
+          Copy-Item $guide $destGuide -Force
           $ver = "${{ steps.ver.outputs.version }}"
           $zipName = "remix_tool_portable_v${ver}.zip"
           if (Test-Path "$out/$zipName") { Remove-Item "$out/$zipName" -Force }

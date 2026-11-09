@@ -5,6 +5,6 @@
 摘要：
 1. 将 `ffmpeg.exe` / `ffprobe.exe` 放入 `assets/ffmpeg/`（或走 CI 自动下载）。
 2. `powershell -File packaging\build_windows.ps1`
-3. 便携目录：`dist/社媒视频混剪/`（含 `flet_desktop/app/flet-windows.zip`）；安装包：`deliver_win/社媒视频混剪_Setup_v0.3.3.exe`（需 Inno Setup 6，失败不影响便携目录）。CI 压缩包：`remix_tool_portable_v0.3.3.zip`。
+3. 便携目录：`dist/社媒视频混剪/`（含 `flet_desktop/app/flet-windows.zip`）；安装包：`deliver_win/社媒视频混剪_Setup_v0.3.4.exe`（需 Inno Setup 6，失败不影响便携目录）。CI 压缩包：`remix_tool_portable_v0.3.4.zip`。
 
 CI：`.github/workflows/windows-build.yml`（windows-latest）。

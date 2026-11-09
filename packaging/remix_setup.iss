@@ -3,7 +3,7 @@
 
 #define MyAppName "社媒视频混剪"
 #define MyAppNameAlt "鲸点混剪部门版"
-#define MyAppVersion "0.3.3"
+#define MyAppVersion "0.3.4"
 #define MyAppPublisher "鲸点"
 #define MyAppExeName "社媒视频混剪.exe"
 

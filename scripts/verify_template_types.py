@@ -65,7 +65,9 @@ def main() -> int:
         mean_clip = (
             sum(c.end - c.start for c in clips) / len(clips) if clips else 0.0
         )
-        script_text = extract_type_duration(raw, tid, 15) if raw else None
+        script_text = extract_type_duration(raw, tid, 15) if raw else "钩子\n正文"
+        if not (script_text or "").strip():
+            script_text = "钩子\n正文"
         sub = OUT / tid
         if sub.exists():
             # wipe old remix only

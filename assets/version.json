@@ -1,5 +1,5 @@
 {
-  "version": "0.3.3",
+  "version": "0.3.4",
   "channel": "dept",
-  "notes": "可多选导入本地 mp4/mov 等视频；选文件夹或选文件后显示扫描数与有效数；probe 失败跳过并写出文件名和原因。文件夹与文件互斥。FilePicker 仍 await pick_files / get_directory_path，不传 on_result。"
+  "notes": "文件对话框没返回路径时会说明原因；ffprobe 失败会写出原始报错；文案烧录中文字幕；没网时跳过配音仍导出字幕。请整包解压到 C:\\remix\\。"
 }
