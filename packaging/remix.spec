@@ -25,6 +25,10 @@ datas = [
     (str(ROOT / "hot_update"), "hot_update"),
     (str(ROOT / "notices"), "notices"),
 ]
+font_dir = ROOT / "assets" / "fonts"
+if font_dir.is_dir() and any(p.is_file() for p in font_dir.iterdir()):
+    # Noto Sans SC for libass FontName. UPX must not rewrite the otf.
+    datas.append((str(font_dir), "assets/fonts"))
 
 binaries = []
 hiddenimports = [
@@ -138,6 +142,6 @@ coll = COLLECT(
     a.datas,
     strip=False,
     upx=True,
-    upx_exclude=["flet-windows.zip"],
+    upx_exclude=["flet-windows.zip", "NotoSansSC-Regular.otf"],
     name="社媒视频混剪",
 )

@@ -93,7 +93,9 @@ class _Videos:
 
 video_picker = _Videos()
 videos = asyncio.run(take_video_files_import(video_picker))
-assert videos == ["/v/a.mp4", "/v/b.mov"]
+assert videos is not None
+assert videos.paths == ["/v/a.mp4", "/v/b.mov"]
+assert videos.missing_path == 0
 assert video_picker.kwargs is not None
 assert video_picker.kwargs["allow_multiple"] is True
 assert video_picker.kwargs["file_type"] == ft.FilePickerFileType.CUSTOM

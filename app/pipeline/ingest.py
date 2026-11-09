@@ -49,9 +49,11 @@ def ingest_with_report(paths: list[Path]) -> IngestReport:
     report = IngestReport(scanned=len(files))
     for f in files:
         meta = probe(f)
-        # probe returns {} on failure; also treat missing duration as unusable
-        if not meta or not meta.get("duration"):
-            reason = "ffprobe 无法识别（损坏、非视频、缺 codec，或本机/打包未带上 ffprobe）"
+        # probe returns {} or {"error": stderr} on failure; missing duration is unusable
+        if not meta or meta.get("error") or not meta.get("duration"):
+            reason = str(meta.get("error") or "").strip() if meta else ""
+            if not reason:
+                reason = "ffprobe 无法识别（损坏、非视频、缺 codec，或本机/打包未带上 ffprobe）"
             report.skips.append(Skip(path=f, reason=reason))
             continue
         report.items.append(

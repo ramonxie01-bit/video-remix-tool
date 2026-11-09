@@ -5,6 +5,7 @@ import subprocess
 from pathlib import Path
 
 from app.models import Script, ScriptLine, VoiceId
+from app.services.ffmpeg import ffprobe_bin
 
 
 VOICE_MAP: dict[VoiceId, str] = {
@@ -14,10 +15,11 @@ VOICE_MAP: dict[VoiceId, str] = {
 
 
 def _probe_dur(path: Path) -> float:
+    """Duration of a TTS file. Use the bundled ffprobe, not whatever is on PATH."""
     try:
         out = subprocess.check_output(
             [
-                "ffprobe",
+                ffprobe_bin(),
                 "-v",
                 "error",
                 "-show_entries",
@@ -26,6 +28,7 @@ def _probe_dur(path: Path) -> float:
                 "default=nw=1:nk=1",
                 str(path),
             ],
+            stderr=subprocess.STDOUT,
             text=True,
         ).strip()
         return float(out or 0)

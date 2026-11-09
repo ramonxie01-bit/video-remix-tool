@@ -1,12 +1,14 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
 
 import flet as ft
 
 from app.models import JobConfig
-from app.pipeline.export import export_job
+from app.pipeline.export import export_job_result
 from app.pipeline.ingest import VIDEO_EXTS, ingest_with_report
+from app.pipeline.script import script_rejection_reason as reject_script
 from app.pipeline.styles import get_style, style_options
 from app.services.update_check import LOCAL_VERSION, check_update
 
@@ -35,6 +37,78 @@ def script_pick_kwargs() -> dict:
         "allowed_extensions": ["txt", "srt"],
         "dialog_title": "选择口播文案 (.txt / .srt)",
     }
+
+
+_PATH_KEYS = ("path", "file_path", "full_path", "fullPath", "filepath", "local_path")
+
+
+def _picker_getters(file: object) -> list:
+    getters = []
+    if isinstance(file, dict):
+        getters.append(file.get)
+    else:
+        getters.append(lambda key: getattr(file, key, None))
+        raw = getattr(file, "__dict__", None)
+        if isinstance(raw, dict):
+            getters.append(raw.get)
+    return getters
+
+
+def _picker_text(file: object, key: str) -> str:
+    for get in _picker_getters(file):
+        try:
+            value = get(key)
+        except Exception:
+            continue
+        if value is None:
+            continue
+        text = str(value).strip().strip("\ufeff").strip('"')
+        if text:
+            return text
+    return ""
+
+
+def _looks_like_path(text: str) -> bool:
+    if text.startswith("\\\\"):
+        return True
+    if len(text) >= 3 and text[1] == ":" and text[2] in "\\/":
+        return True
+    return "/" in text or "\\" in text
+
+
+def picker_display_name(file: object) -> str:
+    return _picker_text(file, "name") or "文件"
+
+
+def extract_picker_path(file: object) -> str | None:
+    """Path from a Flet 0.86 pick result.
+
+    ``FilePickerFile.path`` is optional and is ``None`` on some Windows desktop
+    builds even after the user confirms a file. Try the other path-like fields,
+    then ``name`` when that value is itself a path.
+    """
+    for key in _PATH_KEYS:
+        text = _picker_text(file, key)
+        if text:
+            return text
+    name = _picker_text(file, "name")
+    if name and _looks_like_path(name):
+        return name
+    return None
+
+
+@dataclass(frozen=True)
+class PickedVideos:
+    paths: list[str]
+    missing_path: int = 0
+
+
+def video_pick_unusable_status(count: int) -> str:
+    n = max(int(count), 0)
+    return (
+        f"已选择 {n} 个文件，但文件对话框没有返回可用路径。"
+        "请改用「选择素材文件夹」，或把视频复制到短路径（例如 C:\\remix\\）后再导入。"
+    )
 
 
 def bgm_pick_kwargs() -> dict:
@@ -116,6 +190,9 @@ def apply_script_pick(file_path: str | None) -> tuple[str | None, Path | None, s
         raw = path.read_text(encoding="utf-8-sig")
     except OSError as ex:
         return None, None, f"读文案失败：{ex}"
+    reason = reject_script(raw)
+    if reason:
+        return None, path, reason
     return raw, path, f"已导入文案：{path.name}"
 
 
@@ -131,6 +208,14 @@ async def take_directory(picker: ft.FilePicker) -> str | None:
     return path or None
 
 
+def _no_path_status(kind: str, file: object) -> str:
+    name = picker_display_name(file)
+    return (
+        f"已选择「{name}」，但没有返回可用路径。"
+        f"请把{kind}复制到短路径（例如 C:\\remix\\）后再导入，或直接粘贴。"
+    )
+
+
 async def take_script_import(
     picker: ft.FilePicker,
 ) -> tuple[str | None, Path | None, str] | None:
@@ -138,7 +223,10 @@ async def take_script_import(
     files = await picker.pick_files(**script_pick_kwargs())
     if not files:
         return None
-    return apply_script_pick(files[0].path)
+    path = extract_picker_path(files[0])
+    if not path:
+        return None, None, _no_path_status("文案", files[0])
+    return apply_script_pick(path)
 
 
 async def take_bgm_import(picker: ft.FilePicker) -> tuple[str | None, str] | None:
@@ -146,15 +234,30 @@ async def take_bgm_import(picker: ft.FilePicker) -> tuple[str | None, str] | Non
     files = await picker.pick_files(**bgm_pick_kwargs())
     if not files:
         return None
-    return apply_bgm_pick(files[0].path)
+    path = extract_picker_path(files[0])
+    if not path:
+        return None, _no_path_status("配乐", files[0])
+    return apply_bgm_pick(path)
 
 
-async def take_video_files_import(picker: ft.FilePicker) -> list[str] | None:
-    """None when the dialog is cancelled."""
+async def take_video_files_import(picker: ft.FilePicker) -> PickedVideos | None:
+    """None when the dialog is cancelled.
+
+    A result with empty ``paths`` and ``missing_path > 0`` means the user
+    confirmed files whose path fields were all empty.
+    """
     files = await picker.pick_files(**video_pick_kwargs())
     if not files:
         return None
-    return [f.path for f in files if getattr(f, "path", None)]
+    paths: list[str] = []
+    missing = 0
+    for file in files:
+        path = extract_picker_path(file)
+        if path:
+            paths.append(path)
+        else:
+            missing += 1
+    return PickedVideos(paths=paths, missing_path=missing)
 
 
 def mark_startup_ok() -> None:
@@ -201,7 +304,7 @@ def main(page: ft.Page) -> None:
         expand=True,
     )
     script_hint = ft.Text(
-        "提示：内容 bot 出完整口播稿 → 粘贴或「导入文案」(.txt/.srt) → 生成时驱动字幕+TTS",
+        "粘贴或导入 .txt/.srt 后点生成，字幕会烧进成片。配音需要网络；失败时仍导出带字幕的无声成片。",
         size=12,
         color=ft.Colors.BLUE_GREY_400,
     )
@@ -250,17 +353,25 @@ def main(page: ft.Page) -> None:
         page.update()
 
     async def pick_videos(_e: ft.ControlEvent) -> None:
-        paths = await take_video_files_import(video_picker)
-        if paths is None:
+        result = await take_video_files_import(video_picker)
+        if result is None:
             return
-        shown = apply_video_files_pick(picked, paths)
+        if not result.paths:
+            status.value = video_pick_unusable_status(result.missing_path)
+            page.update()
+            return
+        shown = apply_video_files_pick(picked, result.paths)
         if shown is None:
+            status.value = video_pick_unusable_status(result.missing_path)
+            page.update()
             return
         if len(shown) == 1:
             picked_label.value = shown[0]
         else:
             picked_label.value = f"已选 {len(shown)} 个视频文件"
         status.value = format_ingest_status(picked)
+        if result.missing_path:
+            status.value += f"。另有 {result.missing_path} 个文件没有路径，已忽略。"
         page.update()
 
     async def pick_script(_e: ft.ControlEvent) -> None:
@@ -314,6 +425,19 @@ def main(page: ft.Page) -> None:
             use_text, use_path = None, spath
         else:
             use_text, use_path = script_text, (None if script_text else spath)
+        preview = use_text
+        if not preview and use_path is not None and use_path.is_file():
+            try:
+                preview = use_path.read_text(encoding="utf-8-sig")
+            except OSError as ex:
+                status.value = f"读文案失败：{ex}"
+                page.update()
+                return
+        reason = reject_script(preview or "")
+        if reason:
+            status.value = reason
+            page.update()
+            return
         cfg = JobConfig(
             inputs=[Path(p) for p in picked],
             out_dir=Path(out_field.value or "."),
@@ -326,8 +450,13 @@ def main(page: ft.Page) -> None:
             template_type=template_dd.value or "factory",
         )
         try:
-            outs = export_job(cfg)
-            status.value = f"完成：{', '.join(str(p) for p in outs)}" if outs else "未生成文件（检查 ffmpeg）"
+            result = export_job_result(cfg)
+            if result.outputs:
+                status.value = "完成：" + ", ".join(str(p) for p in result.outputs)
+            else:
+                status.value = "未生成文件（检查 ffmpeg）"
+            if result.warnings:
+                status.value += "。" + "；".join(result.warnings)
         except Exception as ex:  # noqa: BLE001
             status.value = f"失败：{ex}"
         page.update()

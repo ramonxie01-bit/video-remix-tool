@@ -66,9 +66,24 @@ def test_verify_script_does_not_use_cp1252_print_for_dist_path():
     assert "print(f\"Bundled client zip:" not in text
 
 
-def test_version_is_0_3_3():
+def test_version_is_0_3_4():
     version = (ROOT / "assets" / "version.json").read_text(encoding="utf-8")
-    assert '"version": "0.3.3"' in version
+    assert '"version": "0.3.4"' in version
+
+
+def test_verify_requires_bundled_ffmpeg_and_colleague_guide():
+    text = (ROOT / "packaging" / "verify_windows_dist.py").read_text(encoding="utf-8")
+    assert "ffprobe.exe" in text
+    assert "ffmpeg.exe" in text
+    assert "_internal" in text
+    assert "同事使用说明.txt" in text
+    guide = (ROOT / "docs" / "同事使用说明.txt").read_text(encoding="utf-8-sig")
+    assert "C:\\remix\\" in guide
+    assert "社媒视频混剪.exe" in guide
+    assert "字幕" in guide
+    assert "mp4" in guide
+    spec = (ROOT / "packaging" / "remix.spec").read_text(encoding="utf-8")
+    assert "assets/fonts" in spec
 
 
 def test_windows_smoke_requires_filepicker_startup_marker():

@@ -10,6 +10,7 @@ from app.pipeline.script import (
     resolve_script,
     scale_script_to_duration,
     script_from_plain,
+    script_rejection_reason,
 )
 
 
@@ -35,6 +36,14 @@ def test_script_from_plain_chinese_punct():
     s = script_from_plain(text, 10)
     assert len(s.lines) >= 2
     assert s.lines[-1].end == pytest.approx(10.0)
+
+
+def test_script_rejection_reason_empty_and_blank_srt():
+    assert script_rejection_reason(None)
+    assert script_rejection_reason("\n\n")
+    reason = script_rejection_reason("1\n00:00:00,000 --> 00:00:02,000\n\n")
+    assert reason and "文案无效" in reason
+    assert script_rejection_reason("开场钩子\n工厂实拍\n") is None
 
 
 def test_load_txt(tmp_path: Path):
@@ -108,7 +117,10 @@ def test_resolve_falls_back_to_gen_script():
 
 def test_extract_duration_section_demo_file():
     from app.pipeline.script import extract_duration_section, script_from_plain
-    raw = Path("/workspace/remix-sample-clips/demo_scripts_10_15_30.txt").read_text(encoding="utf-8")
+    sample = Path("/workspace/remix-sample-clips/demo_scripts_10_15_30.txt")
+    if not sample.is_file():
+        pytest.skip("external demo script is not in this checkout")
+    raw = sample.read_text(encoding="utf-8")
     sec = extract_duration_section(raw, 10)
     assert "别只看机器响不响" in sec
     assert "很多老板怕色差" not in sec

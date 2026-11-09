@@ -15,6 +15,7 @@ from app.ui.main_window import (
     apply_script_pick,
     apply_video_files_pick,
     bgm_pick_kwargs,
+    extract_picker_path,
     format_ingest_status,
     make_import_pickers,
     mark_startup_ok,
@@ -24,6 +25,7 @@ from app.ui.main_window import (
     take_script_import,
     take_video_files_import,
     video_pick_kwargs,
+    video_pick_unusable_status,
 )
 
 ingest_mod = importlib.import_module("app.pipeline.ingest")
@@ -97,10 +99,41 @@ def test_take_video_files_import_uses_pick_files():
     ]
     picker = _Picker(files=chosen)
     result = asyncio.run(take_video_files_import(picker))
-    assert result == ["/v/a.mp4", "/v/b.mov"]
+    assert result is not None
+    assert result.paths == ["/v/a.mp4", "/v/b.mov"]
+    assert result.missing_path == 1
     assert picker.pick_kwargs == video_pick_kwargs()
     assert asyncio.run(take_video_files_import(_Picker(files=[]))) is None
     assert asyncio.run(take_video_files_import(_Picker(files=None))) is None
+
+
+def test_extract_picker_path_uses_alternate_fields_when_path_is_none(tmp_path: Path):
+    assert extract_picker_path(ft.FilePickerFile(id=1, name="a.mp4", size=1, path=None)) is None
+    windows = ft.FilePickerFile(id=2, name=r"D:\素材\车间.MOV", size=1, path=None)
+    assert extract_picker_path(windows) == r"D:\素材\车间.MOV"
+    assert extract_picker_path({"name": "a.mov", "path": "", "full_path": "/data/a.mov"}) == "/data/a.mov"
+
+    class _Alt:
+        path = None
+        name = "clip.mp4"
+        file_path = str(tmp_path / "clip.mp4")
+
+    assert extract_picker_path(_Alt()) == str(tmp_path / "clip.mp4")
+
+
+def test_video_pick_without_paths_has_a_clear_status():
+    chosen = [
+        ft.FilePickerFile(id=1, name="a.mp4", size=1, path=None),
+        ft.FilePickerFile(id=2, name="b.MOV", size=1, path=""),
+    ]
+    result = asyncio.run(take_video_files_import(_Picker(files=chosen)))
+    assert result is not None
+    assert result.paths == []
+    assert result.missing_path == 2
+    status = video_pick_unusable_status(result.missing_path)
+    assert "已选择 2 个文件" in status
+    assert "没有返回可用路径" in status
+    assert "C:\\remix\\" in status
 
 
 def test_format_ingest_status_reports_counts_and_skips(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
@@ -195,6 +228,16 @@ def test_take_directory_and_files_use_086_result_api(tmp_path: Path):
     no_path = _Picker(files=[ft.FilePickerFile(id=2, name="a.txt", size=1, path=None)])
     failed = asyncio.run(take_script_import(no_path))
     assert failed is not None and failed[0] is None
+    assert "没有返回可用路径" in failed[2]
+
+    script_via_name = tmp_path / "口播.txt"
+    script_via_name.write_text("钩子一句\n", encoding="utf-8")
+    named = _Picker(
+        files=[ft.FilePickerFile(id=4, name=str(script_via_name), size=8, path=None)]
+    )
+    named_result = asyncio.run(take_script_import(named))
+    assert named_result is not None and named_result[0] is not None
+    assert "钩子一句" in named_result[0]
 
     assert asyncio.run(take_script_import(_Picker(files=[]))) is None
 
