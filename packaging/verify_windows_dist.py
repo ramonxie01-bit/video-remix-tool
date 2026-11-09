@@ -87,6 +87,11 @@ def install_colleague_guide(exe: Path) -> None:
     src = ROOT / "docs" / GUIDE_NAME
     if not src.is_file():
         _fail(f"缺少同事使用说明：{src}")
+    guide = src.read_text(encoding="utf-8-sig")
+    if "打开审片看板" not in guide:
+        _fail("同事使用说明缺少「打开审片看板」")
+    if "C:\\remix\\" not in guide:
+        _fail("同事使用说明应写明解压到 C:\\remix\\")
     dest = exe.parent / GUIDE_NAME
     shutil.copy2(src, dest)
     _emit(f"同事使用说明: {dest.name}（与 {APP_EXE_NAME} 同目录，建议解压到 C:\\remix\\）")

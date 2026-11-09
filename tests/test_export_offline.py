@@ -66,7 +66,7 @@ def test_tts_failure_still_burns_script(tmp_path: Path, monkeypatch: pytest.Monk
     monkeypatch.setattr(
         export_mod,
         "pick_highlights",
-        lambda scenes, dur, style=None: [Clip(source=video, start=0, end=1.2)],
+        lambda scenes, dur, style=None, exclude=None: [Clip(source=video, start=0, end=1.2)],
     )
 
     def boom(*_args, **_kwargs):

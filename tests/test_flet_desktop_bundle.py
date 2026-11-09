@@ -66,9 +66,9 @@ def test_verify_script_does_not_use_cp1252_print_for_dist_path():
     assert "print(f\"Bundled client zip:" not in text
 
 
-def test_version_is_0_3_4():
+def test_version_is_0_3_5():
     version = (ROOT / "assets" / "version.json").read_text(encoding="utf-8")
-    assert '"version": "0.3.4"' in version
+    assert '"version": "0.3.5"' in version
 
 
 def test_verify_requires_bundled_ffmpeg_and_colleague_guide():
@@ -82,6 +82,8 @@ def test_verify_requires_bundled_ffmpeg_and_colleague_guide():
     assert "社媒视频混剪.exe" in guide
     assert "字幕" in guide
     assert "mp4" in guide
+    assert "打开审片看板" in guide
+    assert "不需要 Mac" in guide
     spec = (ROOT / "packaging" / "remix.spec").read_text(encoding="utf-8")
     assert "assets/fonts" in spec
 

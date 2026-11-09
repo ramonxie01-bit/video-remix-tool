@@ -37,7 +37,7 @@ function Ensure-ChineseIsl {
 }
 
 $VersionFile = Join-Path $Root "assets\version.json"
-$ver = "0.3.4"
+$ver = "0.3.5"
 if (Test-Path $VersionFile) {
   try {
     $vj = Get-Content $VersionFile -Raw -Encoding UTF8 | ConvertFrom-Json

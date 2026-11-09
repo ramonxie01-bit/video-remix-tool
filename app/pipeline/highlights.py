@@ -1,20 +1,60 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 from app.models import Clip, Scene
 from app.pipeline.styles import RemixStyle, get_style, piece_sec_for_duration
 
 
+def _same_media(left: Path, right: Path) -> bool:
+    if left == right:
+        return True
+    try:
+        if left.resolve() == right.resolve():
+            return True
+    except OSError:
+        pass
+    return os.path.normcase(os.path.normpath(str(left))) == os.path.normcase(
+        os.path.normpath(str(right))
+    )
+
+
+def _hits_exclude(
+    src: Path,
+    start: float,
+    end: float,
+    exclude: list[tuple[Path, float, float]] | None,
+) -> bool:
+    if not exclude:
+        return False
+    for other, a, b in exclude:
+        if not _same_media(src, other):
+            continue
+        overlap = min(end, b) - max(start, a)
+        if overlap > 0.15:
+            return True
+    return False
+
+
+def clips_use_excluded(
+    clips: list[Clip],
+    exclude: list[tuple[Path, float, float]] | None,
+) -> bool:
+    return any(_hits_exclude(c.source, c.start, c.end, exclude) for c in clips)
+
+
 def pick_highlights(
     scenes: list[Scene],
     target_sec: int,
     style: RemixStyle | str | None = None,
+    exclude: list[tuple[Path, float, float]] | None = None,
 ) -> list[Clip]:
     """Diversify: take short bites from EACH source, staggered windows per duration.
 
     Avoids dumping the same head-of-file for every length (platform duplicate risk).
     Cut pacing (piece_sec / region_bias / max_cuts / hook_sec) comes from 成片类型 style.
+    ``exclude`` drops source ranges a reviewer marked 不用 (real scenes only).
     """
     if not scenes:
         return []
@@ -73,17 +113,31 @@ def pick_highlights(
             end = start + take
             if end > scene.end + 1e-6:
                 continue
+        if _hits_exclude(src, start, end, exclude):
+            continue
         clips.append(Clip(source=src, start=start, end=end, role=role))
         used += take
 
     if not clips:
-        # fallback first scene
-        s0 = scenes[0]
+        # Prefer a real scene that is not in the disabled ranges. If every
+        # range was disabled, keep the first real scene (never invent a file).
+        chosen = None
+        for s0 in scenes:
+            end = min(s0.end, s0.start + target_sec)
+            if end - s0.start < 0.45:
+                continue
+            if not _hits_exclude(s0.source, s0.start, end, exclude):
+                chosen = (s0, end)
+                break
+        if chosen is None:
+            s0 = scenes[0]
+            chosen = (s0, min(s0.end, s0.start + target_sec))
+        s0, end = chosen
         clips = [
             Clip(
                 source=s0.source,
                 start=s0.start,
-                end=min(s0.end, s0.start + target_sec),
+                end=end,
                 role="hook",
             )
         ]
