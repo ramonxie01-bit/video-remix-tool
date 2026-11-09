@@ -29,7 +29,9 @@ def build_samples(folder: Path) -> list[Path]:
     ffmpeg = ffmpeg_bin()
     mp4 = folder / "clip.mp4"
     mov = folder / "clip.mov"
-    upper = folder / "CLIP.MOV"
+    # Distinct basename: on a case-insensitive volume CLIP.MOV is the same
+    # file as clip.mov, so an uppercase copy of that name never adds a count.
+    upper = folder / "PHONE.MOV"
     chinese = folder / "车间成片.mp4"
     _run(
         [
